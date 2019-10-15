@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<style>
+    body {
+        text-align: center;
+    }
+    h1{
+        font-size: 60px
+    }
+    #top{
+        margin-top: 60px;
+        font-size: 30px
+    }
+    input{
+        margin: 30px;
+    }
+</style>
+<html>
+<head>
+    <title>Treemap</title>
+</head>
+<body>
+    <h1>
+        Treemap
+    </h1>
+    <div id="top">
+        <span>请选择你想要转化为Treemap的json数据</span><br/>
+        <input id="file" type="file" style="font-size: 24px; margin-left: 60px" /><br/>
+        <button onclick="work()" style="font-size: 30px" >呈现</button><br/>
+    </div>
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+
+    </svg>
+<script type="text/javascript">
+    var input  = document.getElementById("file"); 
+    var data;
+    input.onchange = function()  //当<input>dom发生变化时：  读取json文件，将json字符串转化为对象，并为每一层添加size属性, 并把每一个数组按照size关键字降序排序
+    {
+        var file = this.files[0];
+        if(!!file)
+        {
+            var reader = new FileReader();
+            reader.readAsText(file,"gbk"); //读取本地文件，以gbk编码方式输出
+            reader.onload = function()   //读取完毕后执行如下函数
+            {
+                data=this.result;      //data = json 数据
+                data=JSON.parse(this.result);   //json -> object 
+                console.log(data);
+                function getSize(obj)    //递归地获取每一层对象的size，对对象分为数组和非数组进行不同操作
+                {          
+                    if(Array.isArray(obj))    //数组： 枚举成员，返回size和
+                    {      
+                        var childSize=0;
+                        for(var i=0;i<obj.length;i++)   //此处起初有bug   i应该是局部变量，最开始没有写var
+                        { 
+                            childSize+=getSize(obj[i]);
+                        }
+                        obj.sort(function(a,b){return b.size-a.size});    //降序排序
+                        return childSize;
+                    }
+                    else                        //非数组： 递归地得到自己的size值并添加新属性value
+                    {                              
+                        if(!obj.hasOwnProperty("children"))    //递归边界： 对象没有children属性
+                        {
+                            return obj.size;
+                        }
+                        else
+                        {
+                            var ownSize=getSize(obj.children);
+                            obj.size=ownSize;
+                            return obj.size;
+                        }
+                    }
+                }
+                getSize(data);                  
+                
+            }
+        }
+    }
+    //函数的声明与定义
+       function Dice(obj, x0, y0, x1, y1)   //在矩形中水平排布子矩形
+       {
+           var nodes=obj.children,
+           i=-1,
+           l=nodes.length,
+           t=(x1-x0)/obj.size;
+           while(++i<l)
+           {
+               nodes[i].y0=y0;
+               nodes[i].y1=y1;
+               nodes[i].x0=x0;
+               x0+=t*nodes[i].size;
+               nodes[i].x1=x0;
+           }
+       }
+       function Slice(obj, x0, y0, x1, y1)  //在矩形中垂直排布子矩形
+       {
+           var nodes=obj.children,
+               i=-1,
+               l=nodes.length,
+               t=(y1-y0)/obj.size;
+            while(++i<l)
+            {
+                nodes[i].x0=x0;
+                nodes[i].x1=x1;
+                nodes[i].y0=y0;
+                y0+=t*nodes[i].size;
+                nodes[i].y1=y0;
+            }
+       }
+       function squarify(obj, x0, y0, x1, y1)   //把obj这个对象排布在[x0,y0;x1,y1]矩形中
+       {
+            var ratio = (1 + Math.sqrt(5)) / 2;  //这里参考了d3的方法，使用黄金分割比来排布矩形
+           //变量声明
+            var rows=[],row={},          //渲染出来的矩形的一行或一列的对象及数组，内含有子矩阵的坐标及size
+                nodes=obj.children,
+                size=obj.size,
+                i0=0,
+                i1=0,
+                l=nodes.length,
+                dx=x1-x0,dy=y1-y0,
+                minEdge=Math.min(dx,dy),
+                maxEdge=Math.max(dx,dy),
+                newEdge,
+                size=obj.size,
+                sumSize,                 //当前已经排布好的矩形总面积
+                minRatio,                //当前的长宽比
+                newRatio;                 //同一列插入新矩形后的长宽比与黄金分割比的接近度
+
+                var alpha,beta;
+                var n=l;
+
+            while(i0<l)
+            {
+
+                dx=x1-x0;dy=y1-y0;
+                do sumSize = nodes[i1++].size; while (!sumSize && i1 < l);
+                minSize = maxSize = sumSize;
+                alpha = Math.max(dy / dx, dx / dy) / (size * ratio);
+                beta = sumSize * sumSize * alpha;
+                minRatio = Math.max(maxSize / beta, beta / minSize);        //计算矩形长宽比与ratio的相似度
+                for (; i1 < n; ++i1)                                    //继续向当前列（行）添加矩形。是否添加的依据是加入之后的矩形长宽比和ratio是否更加接近。
+                {
+                    sumSize += nodeSize = nodes[i1].size;
+                    if (nodeSize < minSize) minSize = nodeSize;
+                    if (nodeSize > maxSize) maxSize = nodeSize;
+                    beta = sumSize * sumSize * alpha;
+                    newRatio = Math.max(maxSize / beta, beta / minSize);        //计算加入矩形后的比率
+                    if (newRatio > minRatio) 
+                    { 
+                        sumSize -= nodeSize;
+                        break; 
+                    }
+                    minRatio = newRatio;
+                }                                                                       
+                row={
+                    size: sumSize, 
+                    dice: dx < dy,      //记录其水平和垂直边的相对大小关系
+                    children: nodes.slice(i0,i1)  
+                };                                                         //记录加进来的元素
+                if(row.dice)                                               //水平方向排布矩形
+                    Dice(row, x0, y0, x1, y0+=dy*sumSize/size);
+                else
+                    Slice(row,x0, y0, x0+=dx*sumSize/size ,y1);             //垂直方向排布矩形
+                size-=sumSize;
+                i0=i1;
+            }
+        }
+        function squarifyEach(obj,x0,y0,x1,y1)  //递归获取所有矩形的坐标
+        {
+            if(obj.hasOwnProperty("children"))
+            {
+                squarify(obj,x0,y0,x1,y1);      //先确定children数组各个矩形的坐标
+                for(var i=0;i<obj.children.length;i++)
+                {
+                    squarifyEach(obj.children[i],obj.children[i].x0,obj.children[i].y0,obj.children[i].x1,obj.children[i].y1);  //分别获取children数组各个矩形内部小矩形的坐标
+                }
+            }
+        }
+        function render(obj,color,id,func)       //渲染画图
+        {
+            if(obj.hasOwnProperty("children"))
+            {
+                for(var i=0; i<obj.children.length; i++)
+                    render(obj.children[i],color,id,func);
+            }
+            else
+            {
+                var group = document.createElementNS("http://www.w3.org/2000/svg",'g');  
+                var rect = document.createElementNS("http://www.w3.org/2000/svg",'rect');
+                var text = document.createElementNS("http://www.w3.org/2000/svg",'text');  //创建组件
+                svg =document.getElementById("svg");
+                svg.appendChild(group);
+                rect.setAttribute("x",obj.x0);
+                rect.setAttribute("y",obj.y0);
+                rect.setAttribute("width",obj.x1-obj.x0);
+                rect.setAttribute("height",obj.y1-obj.y0);
+                rect.setAttribute("title",obj.name);
+                rect.setAttribute("id",id);
+                rect.setAttribute("onclick",func+"(this)");     
+                var sty = "fill:"+color+"; stroke: black;stroke-width:1";
+                rect.setAttribute("style",sty);                                       //为矩形设置坐标，颜色等参数
+                text.setAttribute("x",obj.x0+2);
+                text.setAttribute("y",obj.y0+6);
+                text.setAttribute("dy",10);                                           //为文本设置参数
+                var tspan1 = document.createElementNS("http://www.w3.org/2000/svg",'tspan');
+                var tspan2 = document.createElementNS("http://www.w3.org/2000/svg",'tspan'); 
+                tspan1.setAttribute("x",obj.x0+2);
+                tspan1.setAttribute("dy",10);
+                tspan2.setAttribute("x",obj.x0+2);
+                tspan2.setAttribute("dy",20);
+                tspan1.innerHTML=obj.name;
+                tspan2.innerHTML=obj.size;                            //分行 显示name 和 size
+                var title = document.createElementNS("http://www.w3.org/2000/svg",'title');
+                title.innerHTML = obj.name + " "+obj.size;      //title标签，实现bonus
+                group.appendChild(title);
+                text.appendChild(tspan1);
+                text.appendChild(tspan2);
+                group.appendChild(rect);
+                group.appendChild(text);                      //添加组件
+            }
+        }
+//函数声明结束
+var colors =["rgba(205, 43, 238, 0.918);","rgba(228, 231, 9, 0.5)","green","yellow","rgba(78, 243, 13, 0.829)","rgba(238, 20, 75, 0.562)","rgba(13, 108, 218, 0.733)","rgba(14, 238, 238, 0.918)","rgba(252, 28, 241, 0.918)","rgba(240, 199, 17, 0.918)","rgba(70, 226, 231, 0.918)"];
+    function work()  //点击按钮触发
+    {
+        // 以下清空初始dom
+        var element = document.getElementById('top');
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+        
+        squarifyEach(data,0,0,window.screen.width,window.screen.height);  //处理数据，获取坐标
+        var svg = document.getElementById("svg");
+        svg.setAttribute('height',window.screen.height);
+        svg.setAttribute('width',window.screen.width);      //设置画布大小
+        for(var i=0 ;i< data.children.length;i++)
+        {
+            render(data.children[i],colors[i],data.children[i].name,"turn1");  //渲染
+        }
+            
+    }
+    function turn1(obj)        //将某块区域放大
+    {
+        svg.innerHTML=' ';
+        var data1;
+        for(var i =0 ;i<data.children.length;i++)
+        {
+            if(data.children[i].name === obj.id)
+            {
+                data1 = data.children[i];
+                break;
+            }
+        }
+        squarifyEach(data1,0,0,window.screen.width,window.screen.height);
+        render(data1,colors[i],obj.id,"turn2");
+    }
+    function turn2(obj)    //返回
+    {
+        svg.innerHTML=' ';
+        squarifyEach(data,0,0,window.screen.width,window.screen.height);
+        for(var i=0 ;i< data.children.length;i++)
+        {
+            render(data.children[i],colors[i],data.children[i].name,"turn1");
+        }
+          
+    }
+</script>
+</body>
+</html>
